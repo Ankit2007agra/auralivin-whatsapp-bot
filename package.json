@@ -1,0 +1,20 @@
+{
+    "name": "auralivin-whatsapp-bot",
+    "version": "1.0.0",
+    "description": "WhatsApp automation for Auralivin: auto-reply, broadcast messaging, and Shopify order notifications via the Meta WhatsApp Cloud API",
+    "main": "server.js",
+    "type": "commonjs",
+    "scripts": {
+          "start": "node server.js",
+          "dev": "node --watch server.js"
+    },
+    "dependencies": {
+          "axios": "^1.7.7",
+          "body-parser": "^1.20.3",
+          "dotenv": "^16.4.5",
+          "express": "^4.21.1"
+    },
+    "engines": {
+          "node": ">=18"
+    }
+}
