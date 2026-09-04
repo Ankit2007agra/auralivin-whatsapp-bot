@@ -11,6 +11,9 @@ const express = require('express');
 const webhookRoute = require('./routes/webhook');
 const broadcastRoute = require('./routes/broadcast');
 const shopifyWebhookRoute = require('./routes/shopifyWebhook');
+// TEMPORARY - see routes/shopifyAuth.js header. Remove once the Admin API
+// token has been obtained and saved.
+const shopifyAuthRoute = require('./routes/shopifyAuth');
 
 const app = express();
 
@@ -23,19 +26,20 @@ app.use(express.json());
 
 app.use('/webhook', webhookRoute);
 app.use('/broadcast', broadcastRoute);
+app.use('/shopify', shopifyAuthRoute);
 
 app.get('/', (_req, res) => {
-    res.send('Auralivin WhatsApp automation is running.');
+        res.send('Auralivin WhatsApp automation is running.');
 });
 
 app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', time: new Date().toISOString() });
+        res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Auralivin WhatsApp bot listening on port ${PORT}`);
-    if (!process.env.WHATSAPP_TOKEN) {
-          console.warn('WARNING: WHATSAPP_TOKEN is not set - copy .env.example to .env and fill it in.');
-    }
+        console.log(`Auralivin WhatsApp bot listening on port ${PORT}`);
+        if (!process.env.WHATSAPP_TOKEN) {
+                      console.warn('WARNING: WHATSAPP_TOKEN is not set - copy .env.example to .env and fill it in.');
+        }
 });
