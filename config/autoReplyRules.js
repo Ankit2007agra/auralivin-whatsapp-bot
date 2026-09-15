@@ -38,13 +38,14 @@ module.exports = {
                 },
                 {
                         match: ['5', 'agent', 'human', 'support', 'help', 'talk to someone', 'representative'],
-                        // aiAgent tells webhook.js to hand this and every following message
-                        // from this customer to the AI (see lib/ai.js) instead of the
-                        // keyword rules, so it can carry on a natural conversation. If
-                        // ANTHROPIC_API_KEY isn't set, `reply` below is used as a fallback
-                        // instead. Customer can type "menu" any time to go back to the
-                        // numbered options.
-                        aiAgent: true,
+                        // humanHandoff tells webhook.js this customer wants a real person.
+                        // The bot sends `reply` below ONCE, then goes completely silent for
+                        // this customer - no more keyword replies, no AI - so a real person
+                        // can take over in WhatsApp without the bot talking over them.
+                        // Customer can type "menu" any time to cancel that and go back to
+                        // the numbered options themselves; it also auto-resumes on its own
+                        // after 24h in case it's forgotten (see HANDOFF_TTL_MS in webhook.js).
+                        humanHandoff: true,
                         reply:
                                 "Got it — connecting you with our support team. Someone from Auralivin will reply here shortly during business hours (10am-7pm IST, Mon-Sat).",
                 },
