@@ -44,6 +44,16 @@ const HANDOFF_TTL_MS = 24 * 60 * 60 * 1000;
 // mode and goes back to the numbered menu.
 const MENU_RESET_KEYWORDS = ['menu', 'main menu', 'restart', 'start over'];
 
+// WhatsApp RETRIES the webhook call if it doesn't think we responded fast
+// enough - very common right after this server wakes up from sleeping on a
+// free hosting tier (cold start can take 10-30+ seconds). Without this,
+// the SAME customer message can arrive 2, 3, even more times and get a
+// separate auto-reply EACH time - this is almost certainly why replies
+// looked like they were "responding again and again". Keyed by WhatsApp's
+// message id, which stays identical across retries of the same message.
+const processedMessageIds = new Set();
+const MAX_TRACKED_MESSAGE_IDS = 500; // simple cap so this can't grow forever
+
 // --- 1) Webhook verification (Meta calls this once when you save the
 //        webhook URL in the App Dashboard) ---
 router.get('/', (req, res) => {
@@ -79,6 +89,19 @@ router.post('/', async (req, res) => {
       const from = message.from; // sender's WhatsApp number, digits only
       const messageId = message.id;
       const profileName = value?.contacts?.[0]?.profile?.name || '';
+
+      // Duplicate delivery of a message we already handled - WhatsApp
+      // retried the webhook (see processedMessageIds above). Ignore it so
+      // the customer doesn't get a second (or third) reply.
+      if (processedMessageIds.has(messageId)) {
+            console.log(`[webhook] Duplicate delivery of message ${messageId} from ${from} - ignoring.`);
+            return;
+      }
+      processedMessageIds.add(messageId);
+      if (processedMessageIds.size > MAX_TRACKED_MESSAGE_IDS) {
+            // Sets preserve insertion order - drop the oldest tracked id.
+            processedMessageIds.delete(processedMessageIds.values().next().value);
+      }
 
       // Marketplace / courier / other non-customer sender - ignore entirely,
       // don't even mark as read. Check this BEFORE anything else so nothing
