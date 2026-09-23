@@ -13,6 +13,7 @@ module.exports = {
         // replying to it, and it'll be silently ignored from then on.
         numbers: [
                 // '919999999999',
+                '919520666401', // Flipkart
         ],
 
         // Safety net for the FIRST message from a sender you haven't added
