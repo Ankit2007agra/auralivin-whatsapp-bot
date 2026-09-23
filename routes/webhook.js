@@ -57,182 +57,189 @@ const MAX_TRACKED_MESSAGE_IDS = 500; // simple cap so this can't grow forever
 // --- 1) Webhook verification (Meta calls this once when you save the
 //        webhook URL in the App Dashboard) ---
 router.get('/', (req, res) => {
-      const mode = req.query['hub.mode'];
-      const token = req.query['hub.verify_token'];
-      const challenge = req.query['hub.challenge'];
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
 
-           if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-                 console.log('[webhook] Verified successfully.');
-                 return res.status(200).send(challenge);
-           }
-      console.warn('[webhook] Verification failed - token mismatch.');
-      return res.sendStatus(403);
+  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    console.log('[webhook] Verified successfully.');
+    return res.status(200).send(challenge);
+  }
+  console.warn('[webhook] Verification failed - token mismatch.');
+  return res.sendStatus(403);
 });
 
 // --- 2) Incoming events (messages, statuses, etc.) ---
 router.post('/', async (req, res) => {
-      // Always ack immediately - Meta retries aggressively if you don't respond
-            // within a few seconds.
-            res.sendStatus(200);
+  // Always ack immediately - Meta retries aggressively if you don't respond
+  // within a few seconds.
+  res.sendStatus(200);
 
-            try {
-                  const entry = req.body.entry?.[0];
-                  const change = entry?.changes?.[0];
-                  const value = change?.value;
-                  const message = value?.messages?.[0];
+  try {
+    const entry = req.body.entry?.[0];
+    const change = entry?.changes?.[0];
+    const value = change?.value;
+    const message = value?.messages?.[0];
 
-      if (!message) {
-            // Could be a status update (delivered/read) - nothing to do.
-                  return;
+    if (!message) {
+      // Could be a status update (delivered/read) - nothing to do.
+      return;
+    }
+
+    const from = message.from; // sender's WhatsApp number, digits only
+    const messageId = message.id;
+    const profileName = value?.contacts?.[0]?.profile?.name || '';
+
+    // Duplicate delivery of a message we already handled - WhatsApp
+    // retried the webhook (see processedMessageIds above). Ignore it so
+    // the customer doesn't get a second (or third) reply.
+    if (processedMessageIds.has(messageId)) {
+      console.log(`[webhook] Duplicate delivery of message ${messageId} from ${from} - ignoring.`);
+      return;
+    }
+    processedMessageIds.add(messageId);
+    if (processedMessageIds.size > MAX_TRACKED_MESSAGE_IDS) {
+      // Sets preserve insertion order - drop the oldest tracked id.
+      processedMessageIds.delete(processedMessageIds.values().next().value);
+    }
+
+    // Marketplace / courier / other non-customer sender - ignore entirely,
+    // don't even mark as read. Check this BEFORE anything else so nothing
+    // downstream (menu, AI, order lookup) ever sees these messages.
+    if (isExcludedSender(from, profileName)) {
+      console.log(`[webhook] Ignored message from excluded sender ${from} (profile: "${profileName}").`);
+      return;
+    }
+
+    // Mark the message as read (blue ticks) - nice UX touch.
+    whatsapp.markAsRead(messageId).catch((e) =>
+      console.error('[webhook] markAsRead failed:', e.response?.data || e.message)
+    );
+
+    if (message.type !== 'text') {
+      if (humanHandoffNumbers.has(from) && !isHandoffExpired(from)) {
+        return; // stay silent - a human is handling this conversation
       }
+      await whatsapp.sendText(
+        from,
+        "Thanks for your message! We currently reply to text messages - please type what you need and we'll help right away."
+      );
+      return;
+    }
 
-      const from = message.from; // sender's WhatsApp number, digits only
-      const messageId = message.id;
-      const profileName = value?.contacts?.[0]?.profile?.name || '';
+    const text = message.text.body.trim();
+    const reply = await buildReply(from, text);
 
-      // Duplicate delivery of a message we already handled - WhatsApp
-      // retried the webhook (see processedMessageIds above). Ignore it so
-      // the customer doesn't get a second (or third) reply.
-      if (processedMessageIds.has(messageId)) {
-            console.log(`[webhook] Duplicate delivery of message ${messageId} from ${from} - ignoring.`);
-            return;
-      }
-      processedMessageIds.add(messageId);
-      if (processedMessageIds.size > MAX_TRACKED_MESSAGE_IDS) {
-            // Sets preserve insertion order - drop the oldest tracked id.
-            processedMessageIds.delete(processedMessageIds.values().next().value);
-      }
+    if (reply === null) {
+      // null means "stay silent" - either the customer is in human
+      // handoff, or their message didn't match a keyword (see the
+      // "no match" comment in buildReply below) - nothing to send.
+      console.log(`[webhook] Staying silent for ${from}: "${text}"`);
+      return;
+    }
 
-      // Marketplace / courier / other non-customer sender - ignore entirely,
-      // don't even mark as read. Check this BEFORE anything else so nothing
-      // downstream (menu, AI, order lookup) ever sees these messages.
-      if (isExcludedSender(from, profileName)) {
-            console.log(`[webhook] Ignored message from excluded sender ${from} (profile: "${profileName}").`);
-            return;
-      }
-
-      // Mark the message as read (blue ticks) - nice UX touch.
-      whatsapp.markAsRead(messageId).catch((e) =>
-            console.error('[webhook] markAsRead failed:', e.response?.data || e.message)
-                                           );
-
-      if (message.type !== 'text') {
-            if (humanHandoffNumbers.has(from) && !isHandoffExpired(from)) {
-                  return; // stay silent - a human is handling this conversation
-            }
-            await whatsapp.sendText(
-                  from,
-                  "Thanks for your message! We currently reply to text messages - please type what you need and we'll help right away."
-                  );
-            return;
-      }
-
-      const text = message.text.body.trim();
-                  const reply = await buildReply(from, text);
-
-      if (reply === null) {
-            // null means "stay silent" (customer is in human handoff) -
-            // nothing to send.
-            console.log(`[webhook] In human handoff, staying silent for ${from}: "${text}"`);
-            return;
-      }
-
-      await whatsapp.sendText(from, reply);
-                  console.log(`[webhook] Auto-replied to ${from}: "${text}" -> "${reply.slice(0, 60)}..."`);
-            } catch (err) {
-                  console.error('[webhook] Error handling incoming message:', err.response?.data || err.message);
-            }
+    await whatsapp.sendText(from, reply);
+    console.log(`[webhook] Auto-replied to ${from}: "${text}" -> "${reply.slice(0, 60)}..."`);
+  } catch (err) {
+    console.error('[webhook] Error handling incoming message:', err.response?.data || err.message);
+  }
 });
 
 // True if this sender should never get an automated reply (marketplace
 // notification, courier, etc.) - see config/excludedSenders.js.
 function isExcludedSender(from, profileName) {
-      if (excluded.numbers.includes(from)) return true;
-      const lowerName = profileName.toLowerCase();
-      if (lowerName && excluded.nameKeywords.some((kw) => lowerName.includes(kw))) return true;
-      return false;
+  if (excluded.numbers.includes(from)) return true;
+  const lowerName = profileName.toLowerCase();
+  if (lowerName && excluded.nameKeywords.some((kw) => lowerName.includes(kw))) return true;
+  return false;
 }
 
 function isHandoffExpired(from) {
-      const startedAt = humanHandoffNumbers.get(from);
-      if (!startedAt) return true;
-      return Date.now() - startedAt > HANDOFF_TTL_MS;
+  const startedAt = humanHandoffNumbers.get(from);
+  if (!startedAt) return true;
+  return Date.now() - startedAt > HANDOFF_TTL_MS;
 }
 
 async function buildReply(from, text) {
-      const lower = text.toLowerCase();
+  const lower = text.toLowerCase();
 
-// A customer waiting on / being handled by a human can type "menu" to
-// cancel that and go back to the numbered options.
-if (humanHandoffNumbers.has(from)) {
-      if (MENU_RESET_KEYWORDS.includes(lower)) {
-            humanHandoffNumbers.delete(from);
-            return rules.greeting;
-      }
-      if (isHandoffExpired(from)) {
-            // Safety net: no one cleared it, resume normal auto-replies.
-            humanHandoffNumbers.delete(from);
-            // fall through to the normal rules below
-      } else {
-            // A human is handling this conversation - the bot must not
-            // send anything, so it doesn't talk over them.
-            return null;
-      }
-}
-
-// If we just asked this customer for their Order Number, treat this
-// message as the answer and try a live Shopify lookup before anything
-// else - unless it clearly isn't a number (e.g. they typed "catalog"
-// instead), in which case fall through to the normal rules below.
-if (awaitingOrderNumber.has(from)) {
-      awaitingOrderNumber.delete(from);
-      if (/\d{3,7}/.test(text)) {
-            return orderStatusReply(text);
-      }
-}
-
-if (rules.greetOnFirstMessage && !greetedNumbers.has(from)) {
-      greetedNumbers.add(from);
+  // A customer waiting on / being handled by a human can type "menu" to
+  // cancel that and go back to the numbered options.
+  if (humanHandoffNumbers.has(from)) {
+    if (MENU_RESET_KEYWORDS.includes(lower)) {
+      humanHandoffNumbers.delete(from);
       return rules.greeting;
-}
+    }
+    if (isHandoffExpired(from)) {
+      // Safety net: no one cleared it, resume normal auto-replies.
+      humanHandoffNumbers.delete(from);
+      // fall through to the normal rules below
+    } else {
+      // A human is handling this conversation - the bot must not
+      // send anything, so it doesn't talk over them.
+      return null;
+    }
+  }
 
-for (const rule of rules.rules) {
-      if (rule.match.some((keyword) => lower.includes(keyword))) {
-            if (rule.trackOrder) {
-                  awaitingOrderNumber.add(from);
-            }
-            if (rule.humanHandoff) {
-                  // Customer wants a real person. Send the one canned
-                  // "connecting you" message, then go silent - the AI must
-                  // NOT keep messaging this customer after this point.
-                  humanHandoffNumbers.set(from, Date.now());
-                  return rule.reply;
-            }
-            return rule.reply;
+  // If we just asked this customer for their Order Number, treat this
+  // message as the answer and try a live Shopify lookup before anything
+  // else - unless it clearly isn't a number (e.g. they typed "catalog"
+  // instead), in which case fall through to the normal rules below.
+  if (awaitingOrderNumber.has(from)) {
+    awaitingOrderNumber.delete(from);
+    if (/\d{3,7}/.test(text)) {
+      return orderStatusReply(text);
+    }
+  }
+
+  if (rules.greetOnFirstMessage && !greetedNumbers.has(from)) {
+    greetedNumbers.add(from);
+    return rules.greeting;
+  }
+
+  for (const rule of rules.rules) {
+    if (rule.match.some((keyword) => lower.includes(keyword))) {
+      if (rule.trackOrder) {
+        awaitingOrderNumber.add(from);
       }
-}
+      if (rule.humanHandoff) {
+        // Customer wants a real person. Send the one canned
+        // "connecting you" message, then go silent - the AI must
+        // NOT keep messaging this customer after this point.
+        humanHandoffNumbers.set(from, Date.now());
+        return rule.reply;
+      }
+      return rule.reply;
+    }
+  }
 
-return rules.fallback;
+  // No keyword matched - this is a "general"/random message (small talk,
+  // a stray word, something unrelated to the menu). Stay silent instead of
+  // sending the generic fallback text, so the bot only speaks up for the
+  // greeting, the numbered menu options, and order-number replies. Set
+  // this back to `return rules.fallback;` if you ever want that canned
+  // "Thanks for your message..." reply back for unmatched messages.
+  return null;
 }
 
 // Looks up the order in Shopify (see lib/shopify.js) and returns a reply
 // for whatever happened: found, not found, or lookup not set up / failed.
 async function orderStatusReply(text) {
-      try {
-            const status = await shopify.getOrderStatusMessage(text);
+  try {
+    const status = await shopify.getOrderStatusMessage(text);
 
-      if (status === null) {
-            // Shopify env vars aren't configured - keep the old behavior.
-            return 'Got it, thanks! Our team will check that order and update you here shortly.';
-      }
-            if (status === undefined) {
-                  return "We couldn't find an order with that number. Please double-check it and send it again, or type \"agent\" to reach our support team.";
-            }
-            return status;
-      } catch (err) {
-            console.error('[webhook] Shopify order lookup failed:', err.response?.data || err.message);
-            return 'Sorry, we\'re having trouble checking that order right now. Please type "agent" and our team will look it up for you.';
-      }
+    if (status === null) {
+      // Shopify env vars aren't configured - keep the old behavior.
+      return 'Got it, thanks! Our team will check that order and update you here shortly.';
+    }
+    if (status === undefined) {
+      return "We couldn't find an order with that number. Please double-check it and send it again, or type \"agent\" to reach our support team.";
+    }
+    return status;
+  } catch (err) {
+    console.error('[webhook] Shopify order lookup failed:', err.response?.data || err.message);
+    return 'Sorry, we\'re having trouble checking that order right now. Please type "agent" and our team will look it up for you.';
+  }
 }
 
 module.exports = router;
