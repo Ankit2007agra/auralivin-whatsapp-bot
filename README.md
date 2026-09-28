@@ -65,6 +65,29 @@ Third, the Shopify Order creation webhook from step 7 must be set up, because th
 
 These environment variables are optional: COD_TEMPLATE_NAME (default cod_order_confirmation), COD_TEMPLATE_LANGUAGE (default en_US), COD_REMINDER_AFTER_HOURS (default 6) and COD_REMINDER_TEMPLATE_NAME (defaults to the same template).
 
+## 7c. AI assistant for normal questions
+
+Short messages like "hi", "track", "2" or "agent" still get the numbered menu. When a customer writes a normal sentence instead, for example "do you have a bed for a large dog?", the AI answers it. It only answers from three places:
+
+- config/knowledge.md: shipping, returns and other policies, copied from auralivin.com.
+- The Shopify page called "Bot knowledge". This is where you add new information day to day.
+- The live product catalog on auralivin.com: names, prices, sizes and whether something is sold out.
+
+The bot goes silent in that chat and leaves it to your team when:
+
+- the answer isn't in any of those places,
+- the message is a complaint, a refund, return or cancellation request, or a problem with a specific order,
+- the customer is upset,
+- the customer sends a photo, voice note or other media.
+
+Your team answers from the WhatsApp Business app. Once a teammate replies from the app, the bot also stays out of that chat for 24 hours. The customer can type "menu" at any time to bring the bot back.
+
+To teach it something new, create the page once in Shopify Admin, Online Store, Pages, and give it the handle bot-knowledge. You can hide it from your site's menus. Then add lines to it whenever you like, for example "COD is available on orders up to ₹5000" or "Pet bed sizes: S fits up to 5kg...". The bot reads it every 10 minutes. The Shopify app token needs the read_content scope for this.
+
+To let the bot notice when your team replies from the app, subscribe the webhook to the smb_message_echoes field. You'll find it under WhatsApp, Configuration, Webhook fields in the Meta app dashboard, next to messages.
+
+This needs ANTHROPIC_API_KEY in Render. It uses Claude Haiku 4.5, which costs roughly ₹0.3-1 per AI reply. The code lives in lib/ai.js and lib/knowledge.js.
+
 ## 8. Trigger a broadcast
 
 Example request: curl -X POST https://YOUR_RENDER_URL/broadcast -H "Content-Type: application/json" -d '{"apiKey": "YOUR_WEBHOOK_VERIFY_TOKEN", "templateName": "promo_broadcast", "languageCode": "en_US", "recipients": [{"to": "919520666401", "params": ["Ankit", "20% off this week"]}]}'
