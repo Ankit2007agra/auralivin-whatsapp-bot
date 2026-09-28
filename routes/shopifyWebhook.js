@@ -18,6 +18,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const whatsapp = require('../lib/whatsapp');
+const cod = require('../lib/cod');
 
 const router = express.Router();
 
@@ -73,9 +74,19 @@ router.post('/orders', async (req, res) => {
     const customerName = order.customer?.first_name || 'there';
     const customerPhone = normalizePhone(order.phone || order.customer?.phone || order.shipping_address?.phone);
 
-              // 1) Notify the customer, if we have a usable phone number and an
-              //    approved "order_confirmation" template exists.
-              if (customerPhone) {
+              // 1) Notify the customer. COD orders get a "please confirm your
+              //    order" message with Confirm / Cancel buttons instead of the
+              //    normal confirmation - see lib/cod.js.
+              if (cod.isCodOrder(order)) {
+                    try {
+                            await cod.sendCodConfirmation(order);
+                    } catch (err) {
+                            console.error(
+                                      `[shopify] Failed to send COD confirmation for ${orderNumber}:`,
+                                      err.response?.data?.error?.message || err.message
+                                    );
+                    }
+              } else if (customerPhone) {
                     try {
                             await whatsapp.sendTemplate(customerPhone, 'order_confirmation', 'en_US', [
                               {

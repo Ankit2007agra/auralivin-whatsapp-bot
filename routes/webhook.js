@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const whatsapp = require('../lib/whatsapp');
 const shopify = require('../lib/shopify');
+const cod = require('../lib/cod');
 // lib/ai.js is intentionally NOT wired in here right now - "Talk to an
 // Agent" now hands off to a real human (see humanHandoffNumbers below)
 // instead of the AI, since the AI was replying instead of a person and
@@ -115,6 +116,17 @@ router.post('/', async (req, res) => {
     whatsapp.markAsRead(messageId).catch((e) =>
       console.error('[webhook] markAsRead failed:', e.response?.data || e.message)
     );
+
+    // Customer tapped a button on one of our template messages (e.g.
+    // "Confirm Order" / "Cancel Order" on the COD confirmation). Handled
+    // even during human handoff, since it's an answer we asked for.
+    const buttonPayload =
+      message.type === 'button'
+        ? message.button?.payload
+        : message.interactive?.button_reply?.id;
+    if (buttonPayload && (await cod.handleCodButton(from, buttonPayload))) {
+      return;
+    }
 
     if (message.type !== 'text') {
       if (humanHandoffNumbers.has(from) && !isHandoffExpired(from)) {
