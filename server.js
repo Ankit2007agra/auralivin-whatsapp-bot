@@ -4,6 +4,7 @@
 //   POST     /broadcast            - bulk/broadcast template sends
 //   POST     /webhook/shopify/orders       - Shopify new-order -> WhatsApp
 //   POST     /webhook/shopify/fulfillment  - Shopify shipped -> WhatsApp
+//   GET      /cron/cod-reminders           - COD confirmation reminders
 
 require('dotenv').config();
 const express = require('express');
@@ -11,6 +12,7 @@ const express = require('express');
 const webhookRoute = require('./routes/webhook');
 const broadcastRoute = require('./routes/broadcast');
 const shopifyWebhookRoute = require('./routes/shopifyWebhook');
+const cod = require('./lib/cod');
 
 const app = express();
 
@@ -26,6 +28,18 @@ app.use('/broadcast', broadcastRoute);
 
 app.get('/', (_req, res) => {
             res.send('Auralivin WhatsApp automation is running.');
+});
+
+// Hit every 10 minutes by the GitHub Actions keep-alive workflow. Sends
+// one reminder to COD orders still unconfirmed after ~6 hours (lib/cod.js).
+// Safe to call any time - Shopify order tags make it idempotent.
+app.get('/cron/cod-reminders', async (_req, res) => {
+            try {
+                        res.json(await cod.runCodReminderSweep());
+            } catch (err) {
+                        console.error('[cod] Reminder sweep failed:', err.message);
+                        res.status(500).json({ error: 'sweep failed' });
+            }
 });
 
 app.get('/health', (_req, res) => {

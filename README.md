@@ -53,6 +53,18 @@ Templates need Meta's approval (usually minutes to a few hours) before they can 
 
 In Shopify Admin, Settings, Notifications, Webhooks, Create webhook: for the Order creation event, use URL https://YOUR_RENDER_URL/webhook/shopify/orders. For the Order fulfillment event, use URL https://YOUR_RENDER_URL/webhook/shopify/fulfillment. Use JSON format for both. Copy the Signing secret shown on that page into SHOPIFY_WEBHOOK_SECRET.
 
+## 7b. COD order confirmation
+
+When a new Shopify order is paid by Cash on Delivery, the customer gets a WhatsApp message asking them to confirm, with two buttons: Confirm Order and Cancel Order. Confirm tags the order COD-Confirmed. Cancel tags it COD-Cancelled-by-customer and alerts the store owner number(s); the order is not cancelled automatically, so cancel it yourself in Shopify. If there's no answer after about 6 hours, one reminder is sent and the order is tagged COD-Reminder-Sent. The GitHub Actions keep-alive workflow triggers the reminder check every 10 minutes through GET /cron/cod-reminders. In Shopify Admin you can filter orders by these tags to see what's pending, confirmed or cancelled. The code lives in lib/cod.js.
+
+To set it up, first create a template in WhatsApp Manager, Message templates, named cod_order_confirmation. Use the Utility category and English (US) as the language. Give it this body: Hi {{1}}, thank you for your Auralivin order {{2}} of {{3}} with Cash on Delivery. Please confirm your order so we can ship it. Add two Quick Reply buttons in this order: Confirm Order, then Cancel Order.
+
+Second, the Shopify app behind SHOPIFY_ADMIN_API_TOKEN needs the read_orders and write_orders Admin API scopes. write_orders is what lets the bot add tags.
+
+Third, the Shopify Order creation webhook from step 7 must be set up, because that's what triggers the flow. SHOPIFY_STORE_DOMAIN and SHOPIFY_ADMIN_API_TOKEN must also be set.
+
+These environment variables are optional: COD_TEMPLATE_NAME (default cod_order_confirmation), COD_TEMPLATE_LANGUAGE (default en_US), COD_REMINDER_AFTER_HOURS (default 6) and COD_REMINDER_TEMPLATE_NAME (defaults to the same template).
+
 ## 8. Trigger a broadcast
 
 Example request: curl -X POST https://YOUR_RENDER_URL/broadcast -H "Content-Type: application/json" -d '{"apiKey": "YOUR_WEBHOOK_VERIFY_TOKEN", "templateName": "promo_broadcast", "languageCode": "en_US", "recipients": [{"to": "919520666401", "params": ["Ankit", "20% off this week"]}]}'
