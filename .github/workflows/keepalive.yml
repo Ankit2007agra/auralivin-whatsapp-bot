@@ -25,3 +25,9 @@ jobs:
           curl -fsS --max-time 20 "https://auralivin-whatsapp-bot.onrender.com/health" \
             && echo "OK - service is awake" \
             || echo "Ping failed (server may be cold-starting) - not treated as a workflow failure"
+
+      - name: Send due COD confirmation reminders
+        run: |
+          curl -fsS --max-time 60 "https://auralivin-whatsapp-bot.onrender.com/cron/cod-reminders" \
+            && echo \
+            || echo "Reminder sweep failed - will retry on the next run"
