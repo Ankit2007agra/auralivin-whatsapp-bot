@@ -61,13 +61,10 @@ function verifyShopifyHmac(req) {
 }
 
 // Normalize a Shopify phone string to WhatsApp's expected "countrycode+number"
-// digits-only format. Returns null if it doesn't look like a usable number.
-function normalizePhone(rawPhone) {
-    if (!rawPhone) return null;
-    const digits = rawPhone.replace(/[^\d]/g, '');
-    if (digits.length < 8) return null;
-    return digits;
-}
+// digits-only format. Uses the shared helper in lib/cod.js, which adds India's
+// "91" to bare 10-digit numbers - without it, shipping updates were going to
+// numbers like "8882601193" that WhatsApp can't deliver to.
+const normalizePhone = cod.normalizePhone;
 
 router.post('/orders', async (req, res) => {
     if (!verifyShopifyHmac(req)) {
