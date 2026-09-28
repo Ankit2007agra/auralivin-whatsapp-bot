@@ -166,6 +166,19 @@ function isExcludedSender(from, profileName) {
   return false;
 }
 
+// Whole-word keyword matching. Plain substring matching caused wrong
+// replies in the live logs - e.g. "Bye this product" matched "hi" (inside
+// "this"), and "ty" / "hey" hide inside "quality" / "they". Single-digit
+// menu numbers ("1".."5") only count when they're the whole message, so a
+// phone number or order number like "2586" doesn't trigger menu option 2.
+function matchesKeyword(lowerText, keyword) {
+  if (/^\d$/.test(keyword)) {
+    return lowerText.replace(/[^a-z0-9]/g, '') === keyword;
+  }
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(lowerText);
+}
+
 function isHandoffExpired(from) {
   const startedAt = humanHandoffNumbers.get(from);
   if (!startedAt) return true;
@@ -210,8 +223,12 @@ async function buildReply(from, text) {
   }
 
   for (const rule of rules.rules) {
-    if (rule.match.some((keyword) => lower.includes(keyword))) {
+    if (rule.match.some((keyword) => matchesKeyword(lower, keyword))) {
       if (rule.trackOrder) {
+        // "where is my order 2586" - number already given, look it up now.
+        if (/\d{3,7}/.test(text)) {
+          return orderStatusReply(text);
+        }
         awaitingOrderNumber.add(from);
       }
       if (rule.humanHandoff) {

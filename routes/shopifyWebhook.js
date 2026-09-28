@@ -28,6 +28,21 @@ const OWNER_NUMBERS = (process.env.STORE_OWNER_WHATSAPP_NUMBERS || '')
   .map((n) => n.trim())
   .filter(Boolean);
 
+// Shopify can deliver the same event more than once - it retries when our
+// server is slow to answer (Render cold start), and a store with two
+// "Order creation" webhooks registered sends every order twice. Render's
+// logs showed customers getting the same order confirmation 2-3 times.
+// Remember recently handled ids so each event is only acted on once.
+const recentlyHandled = new Set();
+function alreadyHandled(key) {
+    if (recentlyHandled.has(key)) return true;
+    recentlyHandled.add(key);
+    if (recentlyHandled.size > 1000) {
+          recentlyHandled.delete(recentlyHandled.values().next().value);
+    }
+    return false;
+}
+
 // Shopify sends the raw body signed with HMAC-SHA256; body-parser must give
 // us the raw buffer here (see server.js, which mounts this route with
 // express.raw before the JSON parser runs).
@@ -66,6 +81,10 @@ router.post('/orders', async (req, res) => {
           order = JSON.parse(req.body.toString('utf8'));
     } catch (e) {
           console.error('[shopify] Failed to parse order payload:', e.message);
+          return;
+    }
+    if (alreadyHandled(`order:${order.id}`)) {
+          console.log(`[shopify] Duplicate order webhook for ${order.name} - ignoring.`);
           return;
     }
 
@@ -145,6 +164,10 @@ router.post('/fulfillment', async (req, res) => {
           fulfillment = JSON.parse(req.body.toString('utf8'));
     } catch (e) {
           console.error('[shopify] Failed to parse fulfillment payload:', e.message);
+          return;
+    }
+    if (alreadyHandled(`fulfillment:${fulfillment.id}`)) {
+          console.log(`[shopify] Duplicate fulfillment webhook for ${fulfillment.name} - ignoring.`);
           return;
     }
 
