@@ -104,6 +104,24 @@ router.post('/orders', async (req, res) => {
                                       `[shopify] Failed to send COD confirmation for ${orderNumber}:`,
                                       err.response?.data?.error?.message || err.message
                                     );
+                            // Safety net: e.g. the cod_order_confirmation template isn't
+                            // approved yet - send the normal order confirmation instead
+                            // so the customer still hears from us.
+                            if (customerPhone) {
+                                    await whatsapp
+                                              .sendTemplate(customerPhone, 'order_confirmation', 'en_US', [
+                                                {
+                                                          type: 'body',
+                                                          parameters: [
+                                                            { type: 'text', text: customerName },
+                                                            { type: 'text', text: orderNumber },
+                                                            { type: 'text', text: total },
+                                                                    ],
+                                                },
+                                                      ])
+                                              .then(() => console.log(`[shopify] Sent normal order confirmation to ${customerPhone} for ${orderNumber} instead`))
+                                              .catch((e) => console.error('[shopify] Fallback confirmation failed too:', e.response?.data?.error?.message || e.message));
+                            }
                     }
               } else if (customerPhone) {
                     try {
