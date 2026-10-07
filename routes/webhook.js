@@ -7,6 +7,7 @@ const router = express.Router();
 const whatsapp = require('../lib/whatsapp');
 const shopify = require('../lib/shopify');
 const cod = require('../lib/cod');
+const abandonedCart = require('../lib/abandonedCart');
 // AI assistant for normal (non-menu) questions - answers only from the
 // store's knowledge + live catalog, and goes silent (hands off to your
 // team) when it doesn't know. See lib/ai.js and lib/knowledge.js.
@@ -170,6 +171,14 @@ router.post('/', async (req, res) => {
     }
 
     const text = message.text.body.trim();
+
+    // "STOP" -> opt out of cart reminders / offers.
+    const optOutReply = await abandonedCart.handleOptOut(from, text);
+    if (optOutReply) {
+      await whatsapp.sendText(from, optOutReply);
+      return;
+    }
+
     const reply = await buildReply(from, text);
     remember(from, 'user', text);
 
