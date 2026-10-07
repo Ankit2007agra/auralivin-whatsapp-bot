@@ -31,3 +31,9 @@ jobs:
           curl -fsS --max-time 60 "https://auralivin-whatsapp-bot.onrender.com/cron/cod-reminders" \
             && echo \
             || echo "Reminder sweep failed - will retry on the next run"
+
+      - name: Send due abandoned-cart reminders
+        run: |
+          curl -fsS --max-time 90 "https://auralivin-whatsapp-bot.onrender.com/cron/abandoned-carts" \
+            && echo \
+            || echo "Abandoned-cart sweep failed - will retry on the next run"
