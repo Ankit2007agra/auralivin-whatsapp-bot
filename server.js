@@ -5,6 +5,7 @@
 //   POST     /webhook/shopify/orders       - Shopify new-order -> WhatsApp
 //   POST     /webhook/shopify/fulfillment  - Shopify shipped -> WhatsApp
 //   GET      /cron/cod-reminders           - COD confirmation reminders
+//   GET      /cron/abandoned-carts         - abandoned-cart WhatsApp reminders
 
 require('dotenv').config();
 const express = require('express');
@@ -13,6 +14,7 @@ const webhookRoute = require('./routes/webhook');
 const broadcastRoute = require('./routes/broadcast');
 const shopifyWebhookRoute = require('./routes/shopifyWebhook');
 const cod = require('./lib/cod');
+const abandonedCart = require('./lib/abandonedCart');
 
 const app = express();
 
@@ -38,6 +40,18 @@ app.get('/cron/cod-reminders', async (_req, res) => {
                         res.json(await cod.runCodReminderSweep());
             } catch (err) {
                         console.error('[cod] Reminder sweep failed:', err.message);
+                        res.status(500).json({ error: 'sweep failed' });
+            }
+});
+
+// Also hit every 10 minutes by the keep-alive workflow. Sends one WhatsApp
+// reminder per abandoned cart (lib/abandonedCart.js). Add ?dry=1 to only
+// count who WOULD get a message (returns numbers only, sends nothing).
+app.get('/cron/abandoned-carts', async (req, res) => {
+            try {
+                        res.json(await abandonedCart.runAbandonedCartSweep({ dryRun: req.query.dry === '1' }));
+            } catch (err) {
+                        console.error('[cart] Abandoned-cart sweep failed:', err.message);
                         res.status(500).json({ error: 'sweep failed' });
             }
 });

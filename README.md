@@ -88,6 +88,32 @@ To let the bot notice when your team replies from the app, subscribe the webhook
 
 This needs ANTHROPIC_API_KEY in Render. It uses Claude Haiku 4.5, which costs roughly ₹0.3-1 per AI reply. The code lives in lib/ai.js and lib/knowledge.js.
 
+## 7d. Abandoned-cart WhatsApp reminder
+
+When someone leaves items in their cart, the bot sends them one WhatsApp reminder with a "Complete your order" button. The button opens their saved checkout.
+
+The reminder goes out about an hour after the customer's last activity, and only between 9am and 9pm IST. Reminders due overnight wait until the next morning.
+
+The bot doesn't send a reminder if:
+
+- the checkout has no phone number,
+- the same phone number placed an order in the last 3 days,
+- that number already got a cart reminder in the last 7 days,
+- the customer replied STOP.
+
+The GitHub Actions keep-alive workflow runs the check every 10 minutes through GET /cron/abandoned-carts. You can open /cron/abandoned-carts?dry=1 to see counts of who would get a message; it shows numbers only and sends nothing.
+
+To set it up, create a template in WhatsApp Manager:
+
+- Name: abandoned_cart_reminder
+- Category: Marketing
+- Language: English (US)
+- Body: Hi {{1}}, you left {{2}} in your Auralivin cart. Your items are still saved - tap below to complete your order.
+- Footer: Reply STOP to opt out
+- Button: Visit website, Dynamic URL https://auralivin.com/{{1}}, with the text "Complete your order"
+
+Each reminder is a marketing message, which Meta charges at about Rs 0.86 each. The code lives in lib/abandonedCart.js.
+
 ## 8. Trigger a broadcast
 
 Example request: curl -X POST https://YOUR_RENDER_URL/broadcast -H "Content-Type: application/json" -d '{"apiKey": "YOUR_WEBHOOK_VERIFY_TOKEN", "templateName": "promo_broadcast", "languageCode": "en_US", "recipients": [{"to": "919520666401", "params": ["Ankit", "20% off this week"]}]}'
