@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const whatsapp = require('../lib/whatsapp');
-const shopify = require('../lib/shopify');
+const stores = require('../lib/stores');
 const cod = require('../lib/cod');
 const abandonedCart = require('../lib/abandonedCart');
 // AI assistant for normal (non-menu) questions - answers only from the
@@ -333,24 +333,36 @@ function keywordRuleReply(from, lower) {
   return null;
 }
 
-// Looks up the order in Shopify (see lib/shopify.js) and returns a reply
-// for whatever happened: found, not found, or lookup not set up / failed.
+// Looks up the order number in EVERY connected store (the WhatsApp number
+// is shared by Auralivin and Lovtail, and we don't know which brand the
+// customer bought from) and returns a reply for whatever happened.
 async function orderStatusReply(text) {
-  try {
-    const status = await shopify.getOrderStatusMessage(text);
-
-    if (status === null) {
-      // Shopify env vars aren't configured - keep the old behavior.
-      return 'Got it, thanks! Our team will check that order and update you here shortly.';
-    }
-    if (status === undefined) {
-      return "We couldn't find an order with that number. Please double-check it and send it again, or type \"agent\" to reach our support team.";
-    }
-    return status;
-  } catch (err) {
-    console.error('[webhook] Shopify order lookup failed:', err.response?.data || err.message);
+  const connected = stores.connected();
+  if (!connected.length) {
+    // Shopify env vars aren't configured - keep the old behavior.
+    return 'Got it, thanks! Our team will check that order and update you here shortly.';
+  }
+  const results = await Promise.all(
+    connected.map((st) =>
+      st.shopify
+        .getOrderStatusMessage(text)
+        .then((msg) => ({ st, msg }))
+        .catch((err) => {
+          console.error(`[webhook] ${st.name} order lookup failed:`, err.response?.data || err.message);
+          return { st, error: true };
+        })
+    )
+  );
+  const found = results.filter((r) => typeof r.msg === 'string');
+  if (found.length === 1 && connected.length === 1) return found[0].msg;
+  if (found.length) {
+    // Label the brand, since the same order number can exist in both stores.
+    return found.map((r) => `${r.st.name}\n${r.msg}`).join('\n\n');
+  }
+  if (results.some((r) => r.error)) {
     return 'Sorry, we\'re having trouble checking that order right now. Please type "agent" and our team will look it up for you.';
   }
+  return "We couldn't find an order with that number. Please double-check it and send it again, or type \"agent\" to reach our support team.";
 }
 
 module.exports = router;

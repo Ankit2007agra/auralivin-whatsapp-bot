@@ -9,6 +9,9 @@
 //   Event: "Order fulfillment" -> URL: https://YOUR_HOST/webhook/shopify/fulfillment
 //   Format: JSON
 // Copy the "Signing secret" shown there into SHOPIFY_WEBHOOK_SECRET in .env
+// (Lovtail's store: LOVTAIL_SHOPIFY_WEBHOOK_SECRET). Both stores post to the
+// same URLs; the X-Shopify-Shop-Domain header + signature tell us which
+// brand the order belongs to (see lib/stores.js).
 //
 // Requires approved WhatsApp templates named "order_confirmation" and
 // "shipping_update" (create + submit these in WhatsApp Manager > Message
@@ -19,10 +22,10 @@ const express = require('express');
 const crypto = require('crypto');
 const whatsapp = require('../lib/whatsapp');
 const cod = require('../lib/cod');
+const stores = require('../lib/stores');
 
 const router = express.Router();
 
-const SHOPIFY_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET;
 const OWNER_NUMBERS = (process.env.STORE_OWNER_WHATSAPP_NUMBERS || '')
   .split(',')
   .map((n) => n.trim())
@@ -46,11 +49,10 @@ function alreadyHandled(key) {
 // Shopify sends the raw body signed with HMAC-SHA256; body-parser must give
 // us the raw buffer here (see server.js, which mounts this route with
 // express.raw before the JSON parser runs).
-function verifyShopifyHmac(req) {
-    const hmacHeader = req.get('X-Shopify-Hmac-Sha256');
-    if (!hmacHeader || !SHOPIFY_SECRET) return false;
+function hmacMatches(secret, req, hmacHeader) {
+    if (!secret) return false;
     const digest = crypto
-      .createHmac('sha256', SHOPIFY_SECRET)
+      .createHmac('sha256', secret)
       .update(req.body) // raw Buffer
     .digest('base64');
     try {
@@ -60,6 +62,17 @@ function verifyShopifyHmac(req) {
     }
 }
 
+// Returns the store (brand) this webhook came from, or null if the
+// signature doesn't match any store's secret.
+function verifiedStore(req) {
+    const hmacHeader = req.get('X-Shopify-Hmac-Sha256');
+    if (!hmacHeader) return null;
+    const byDomain = stores.byShopDomain(req.get('X-Shopify-Shop-Domain'));
+    if (byDomain) return hmacMatches(byDomain.webhookSecret, req, hmacHeader) ? byDomain : null;
+    // Unknown/missing domain header: accept whichever store's secret matches.
+    return stores.all().find((st) => hmacMatches(st.webhookSecret, req, hmacHeader)) || null;
+}
+
 // Normalize a Shopify phone string to WhatsApp's expected "countrycode+number"
 // digits-only format. Uses the shared helper in lib/cod.js, which adds India's
 // "91" to bare 10-digit numbers - without it, shipping updates were going to
@@ -67,7 +80,8 @@ function verifyShopifyHmac(req) {
 const normalizePhone = cod.normalizePhone;
 
 router.post('/orders', async (req, res) => {
-    if (!verifyShopifyHmac(req)) {
+    const store = verifiedStore(req);
+    if (!store) {
           console.warn('[shopify] Invalid HMAC signature on /orders webhook.');
           return res.sendStatus(401);
     }
@@ -80,7 +94,7 @@ router.post('/orders', async (req, res) => {
           console.error('[shopify] Failed to parse order payload:', e.message);
           return;
     }
-    if (alreadyHandled(`order:${order.id}`)) {
+    if (alreadyHandled(`${store.key}:order:${order.id}`)) {
           console.log(`[shopify] Duplicate order webhook for ${order.name} - ignoring.`);
           return;
     }
@@ -95,7 +109,7 @@ router.post('/orders', async (req, res) => {
               //    normal confirmation - see lib/cod.js.
               if (cod.isCodOrder(order)) {
                     try {
-                            await cod.sendCodConfirmation(order);
+                            await cod.sendCodConfirmation(store, order);
                     } catch (err) {
                             console.error(
                                       `[shopify] Failed to send COD confirmation for ${orderNumber}:`,
@@ -132,7 +146,7 @@ router.post('/orders', async (req, res) => {
                                                       ],
                               },
                                     ]);
-                            console.log(`[shopify] Order confirmation sent to customer ${customerPhone} for ${orderNumber}`);
+                            console.log(`[shopify] ${store.name}: order confirmation sent to customer ${customerPhone} for ${orderNumber}`);
                     } catch (err) {
                             console.error(
                                       `[shopify] Failed to message customer for ${orderNumber}:`,
@@ -152,8 +166,8 @@ router.post('/orders', async (req, res) => {
                               {
                                           type: 'body',
                                           parameters: [
-                                            { type: 'text', text: 'Auralivin Team' },
-                                            { type: 'text', text: `NEW ORDER ${orderNumber}` },
+                                            { type: 'text', text: `${store.name} Team` },
+                                            { type: 'text', text: `NEW ${store.name.toUpperCase()} ORDER ${orderNumber}` },
                                             { type: 'text', text: total },
                                                       ],
                               },
@@ -168,7 +182,8 @@ router.post('/orders', async (req, res) => {
 });
 
 router.post('/fulfillment', async (req, res) => {
-    if (!verifyShopifyHmac(req)) {
+    const store = verifiedStore(req);
+    if (!store) {
           console.warn('[shopify] Invalid HMAC signature on /fulfillment webhook.');
           return res.sendStatus(401);
     }
@@ -181,7 +196,7 @@ router.post('/fulfillment', async (req, res) => {
           console.error('[shopify] Failed to parse fulfillment payload:', e.message);
           return;
     }
-    if (alreadyHandled(`fulfillment:${fulfillment.id}`)) {
+    if (alreadyHandled(`${store.key}:fulfillment:${fulfillment.id}`)) {
           console.log(`[shopify] Duplicate fulfillment webhook for ${fulfillment.name} - ignoring.`);
           return;
     }
@@ -207,7 +222,7 @@ router.post('/fulfillment', async (req, res) => {
                                           ],
                       },
                           ]);
-                    console.log(`[shopify] Shipping update sent to ${customerPhone} for ${orderNumber}`);
+                    console.log(`[shopify] ${store.name}: shipping update sent to ${customerPhone} for ${orderNumber}`);
               } catch (err) {
                     console.error(
                             `[shopify] Failed to send shipping update for ${orderNumber}:`,
