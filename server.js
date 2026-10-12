@@ -29,7 +29,7 @@ app.use('/webhook', webhookRoute);
 app.use('/broadcast', broadcastRoute);
 
 app.get('/', (_req, res) => {
-            res.send('Auralivin WhatsApp automation is running.');
+            res.send('Auralivin & Lovtail WhatsApp automation is running.');
 });
 
 // Hit every 10 minutes by the GitHub Actions keep-alive workflow. Sends

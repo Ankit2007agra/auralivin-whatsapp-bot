@@ -114,6 +114,26 @@ To set it up, create a template in WhatsApp Manager:
 
 Each reminder is a marketing message, which Meta charges at about Rs 0.86 each. The code lives in lib/abandonedCart.js.
 
+## 7e. Second brand: Lovtail on the same WhatsApp number
+
+The bot serves both Auralivin and Lovtail from Auralivin's WhatsApp number. The list of brands lives in lib/stores.js.
+
+Customers see one greeting, "Welcome to Auralivin & Lovtail". The catalog menu option links to both websites.
+
+Order tracking searches both stores, and the reply names the brand. The AI assistant answers from both brands' policies, from config/knowledge.md and config/knowledge-lovtail.md, from each store's "Bot knowledge" page and from both live catalogs. It labels every product with its brand.
+
+New-order messages, COD confirmations, shipping updates and abandoned-cart reminders all work for each store. The bot knows which store an order came from by the store's webhook signature.
+
+Lovtail's COD confirmation and cart reminder use their own templates, cod_order_confirmation_lovtail and abandoned_cart_reminder_lovtail. The cart reminder's button points to https://www.lovtail.com/{{1}}. COD orders from Razorpay Magic Checkout are detected automatically.
+
+When a customer replies STOP, they're opted out for both brands.
+
+To set up Lovtail:
+
+1. Create an app called "WhatsApp Bot" in the Dev Dashboard of the Shopify organization that owns Lovtail. Give it the scopes read_orders, write_orders and read_content, and install it on the Lovtail store.
+2. In Render, set LOVTAIL_SHOPIFY_STORE_DOMAIN to b51150-ff.myshopify.com, and set LOVTAIL_SHOPIFY_CLIENT_ID and LOVTAIL_SHOPIFY_CLIENT_SECRET from the app's settings.
+3. In Lovtail Admin, go to Settings, Notifications, Webhooks. Create an "Order creation" webhook pointing to /webhook/shopify/orders and an "Order fulfillment" webhook pointing to /webhook/shopify/fulfillment, both on the same Render URL as Auralivin, in JSON format. Put the signing secret shown there into LOVTAIL_SHOPIFY_WEBHOOK_SECRET.
+
 ## 8. Trigger a broadcast
 
 Example request: curl -X POST https://YOUR_RENDER_URL/broadcast -H "Content-Type: application/json" -d '{"apiKey": "YOUR_WEBHOOK_VERIFY_TOKEN", "templateName": "promo_broadcast", "languageCode": "en_US", "recipients": [{"to": "919520666401", "params": ["Ankit", "20% off this week"]}]}'
