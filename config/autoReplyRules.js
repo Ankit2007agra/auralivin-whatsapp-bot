@@ -1,10 +1,10 @@
 // config/autoReplyRules.js
-// Edit this file to change what Auralivin's bot says. No need to touch other
+// Edit this file to change what the bot says (shared by Auralivin & Lovtail). No need to touch other
 // code. Rules are checked top to bottom; the first match wins.
 
 module.exports = {
   // Sent once, the first time a customer messages (or messages after a long gap).
-  greeting: `Hi! 👋 Welcome to Auralivin. Thanks for reaching out.\n\nHow can we help you today? Reply with a number or word:\n1️⃣ Order Tracking - type "track"\n2️⃣ Catalog / Products - type "catalog"\n3️⃣ Register a Complaint - type "complaint"\n4️⃣ Cancel / Exchange - type "cancel"\n5️⃣ Talk to an Agent - type "agent"`,
+  greeting: `Hi! 👋 Welcome to Auralivin & Lovtail. Thanks for reaching out.\n\nHow can we help you today? Reply with a number or word:\n1️⃣ Order Tracking - type "track"\n2️⃣ Catalog / Products - type "catalog"\n3️⃣ Register a Complaint - type "complaint"\n4️⃣ Cancel / Exchange - type "cancel"\n5️⃣ Talk to an Agent - type "agent"`,
 
   // Keyword-based rules: { match: [array of trigger words, lowercase], reply }
   // Checked top to bottom - the first rule whose `match` list contains a word
@@ -24,7 +24,7 @@ module.exports = {
           {
       match: ['2', 'catalog', 'products', 'price', 'prices', 'shop', 'buy'],
       reply:
-        'You can browse our full catalog here: https://auralivin.com \n\nLet us know if you\'re looking for something specific!',
+        'You can browse our full catalogs here:\nAuralivin (home décor & furniture): https://auralivin.com\nLovtail (pet products): https://www.lovtail.com\n\nLet us know if you\'re looking for something specific!',
           },
           {
       match: ['3', 'complaint', 'issue', 'problem', 'damaged', 'defective', 'wrong item', 'not working', 'quality'],
@@ -47,12 +47,12 @@ module.exports = {
       // after 24h in case it's forgotten (see HANDOFF_TTL_MS in webhook.js).
       humanHandoff: true,
       reply:
-        "Got it — connecting you with our support team. Someone from Auralivin will reply here shortly during business hours (10am-7pm IST, Mon-Sat).",
+        "Got it — connecting you with our support team. Someone from our team will reply here shortly during business hours (10am-7pm IST, Mon-Sat).",
           },
           {
       match: ['hi', 'hello', 'hey', 'hii', 'namaste'],
       reply:
-        'Hey there! 😊 How can we help you with Auralivin today?',
+        'Hey there! 😊 How can we help you today?',
           },
           {
       match: ['thanks', 'thank you', 'thankyou', 'ty'],
