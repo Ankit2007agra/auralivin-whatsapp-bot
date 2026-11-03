@@ -26,6 +26,7 @@ function delay(ms) {
  *   "apiKey": "...",                 // must match BROADCAST_API_KEY
  *   "templateName": "promo_broadcast",
  *   "languageCode": "en_US",
+ *   "headerImageUrl": "https://cdn.shopify.com/...jpg",   // optional
  *   "recipients": [
  *     { "to": "919520666401", "params": ["Ankit", "20% OFF"] }
  *   ]
@@ -33,9 +34,11 @@ function delay(ms) {
  *
  * `params` become {{1}}, {{2}}, ... text variables in the template body, in
  * order. Omit `params` (or use []) for templates with no variables.
+ * `headerImageUrl` is required for templates with an image header (a public
+ * JPG/PNG link); leave it out for text-only templates.
  */
 router.post('/', async (req, res) => {
-    const { apiKey, templateName, languageCode, recipients } = req.body || {};
+    const { apiKey, templateName, languageCode, recipients, headerImageUrl } = req.body || {};
 
               if (!BROADCAST_KEY || apiKey !== BROADCAST_KEY) {
                     return res.status(401).json({ error: 'Invalid or missing apiKey' });
@@ -52,10 +55,13 @@ router.post('/', async (req, res) => {
     for (const recipient of recipients) {
           const { to, params = [] } = recipient;
           try {
-                  const components =
-                            params.length > 0
-                      ? [{ type: 'body', parameters: params.map((p) => ({ type: 'text', text: String(p) })) }]
-                              : [];
+                  const components = [];
+                  if (headerImageUrl) {
+                            components.push({ type: 'header', parameters: [{ type: 'image', image: { link: headerImageUrl } }] });
+                  }
+                  if (params.length > 0) {
+                            components.push({ type: 'body', parameters: params.map((p) => ({ type: 'text', text: String(p) })) });
+                  }
 
             await whatsapp.sendTemplate(to, templateName, languageCode || 'en_US', components);
                   results.push({ to, status: 'sent' });
