@@ -44,8 +44,8 @@ app.get('/cron/cod-reminders', async (_req, res) => {
             }
 });
 
-// Also hit every 10 minutes by the keep-alive workflow. Sends one WhatsApp
-// reminder per abandoned cart (lib/abandonedCart.js). Add ?dry=1 to only
+// Also run every 10 minutes by the in-server timer below. Sends up to 3
+// WhatsApp reminders per abandoned cart (lib/abandonedCart.js). Add ?dry=1 to only
 // count who WOULD get a message (returns numbers only, sends nothing).
 app.get('/cron/abandoned-carts', async (req, res) => {
             try {
@@ -60,8 +60,32 @@ app.get('/health', (_req, res) => {
             res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
+// In-server scheduler. GitHub's scheduled workflow only fires every few
+// hours in practice, so the server runs its own sweeps every 10 minutes and
+// pings its own public URL so Render's free tier doesn't put it to sleep.
+// Set KEEP_AWAKE=0 to turn this off.
+const SWEEP_EVERY_MS = 10 * 60 * 1000;
+function startScheduler() {
+            if (process.env.KEEP_AWAKE === '0') return;
+            const selfUrl = (process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '').replace(/\/$/, '');
+            const tick = async () => {
+                        if (selfUrl) {
+                                    await fetch(`${selfUrl}/health`).catch((e) => console.warn('[timer] self-ping failed:', e.message));
+                        }
+                        await cod.runCodReminderSweep().catch((e) => console.error('[timer] COD sweep failed:', e.message));
+                        const r = await abandonedCart
+                                    .runAbandonedCartSweep()
+                                    .catch((e) => ({ error: e.message }));
+                        if (!r.skipped) console.log('[timer] cart sweep:', JSON.stringify(r));
+            };
+            setTimeout(tick, 60 * 1000);
+            setInterval(tick, SWEEP_EVERY_MS);
+            console.log(`[timer] Sweeps every 10 min${selfUrl ? `, self-ping ${selfUrl}` : ' (no RENDER_EXTERNAL_URL - no self-ping)'}`);
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
+            startScheduler();
             console.log(`Auralivin WhatsApp bot listening on port ${PORT}`);
             if (!process.env.WHATSAPP_TOKEN) {
                               console.warn('WARNING: WHATSAPP_TOKEN is not set - copy .env.example to .env and fill it in.');
